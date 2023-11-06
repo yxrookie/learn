@@ -1,214 +1,132 @@
 package go_consistenthash
 
+// 泛型一致性哈希实现
 import (
-	"crypto/rand"
-	"fmt"
-	"math/big"
-	"sort"
 	"testing"
-	. "go_consistenthash/hashring"
 )
 
-type node struct {
-	key   string
-	value int
-}
-
-var nodeList = []Slot[node]{
-	NewSlot("1", node{key: "1", value: 1}),
-	NewSlot("2", node{key: "2", value: 2}),
-	NewSlot("3", node{key: "3", value: 3}),
-	NewSlot("4", node{key: "4", value: 4}),
-	NewSlot("5", node{key: "5", value: 5}),
-	NewSlot("6", node{key: "6", value: 6}),
-}
-
-var sortNodes = []node{
-	{key: "2", value: 2},
-	{key: "6", value: 6},
-	{key: "3", value: 3},
-	{key: "1", value: 1},
-	{key: "5", value: 5},
-	{key: "4", value: 4},
-}
-
-func TestHashRingGet(t *testing.T) {
-	ring := New[node]()
-	ring.Add(nodeList...)
-
-	slot, ok := ring.Get("2")
-	if !ok {
-		t.Fatal()
+var (
+	manager   = NewManager[string](10)
+	initNodes = []string{
+		"test1",
+		"test2",
+		"test3",
+		"test4",
+		"test5",
+		"test6",
 	}
+)
 
-	if slot.Hash() != nodeList[1].Hash() {
-		t.Fatal()
-	}
-
-	slot, _ = ring.Get("7")
-	if slot.Hash() != nodeList[2].Hash() {
-		t.Fatal()
+func init() {
+	for _, v := range initNodes {
+		node := NewNode(v, v)
+		manager.Add(node)
 	}
 }
 
-func TestHashRingRemove(t *testing.T) {
-	ring := New[node]()
-	ring.Add(nodeList...)
+func TestFind(t *testing.T) {
+	t.Run("Should find current node", func(t *testing.T) {
+		node, ok := manager.FindOne("test1#0")
+		if !ok {
+			t.Fail()
+			return
+		}
 
-	slot, ok := ring.Get("4")
-	if !ok {
-		t.Fatal()
-	}
-	if slot.Hash() != nodeList[3].Hash() {
-		t.Fatal()
-	}
+		if node.GetValue() != "test1" {
+			t.Fail()
+		}
+	})
 
-	ring.Remove("4")
+	t.Run("Should find next node", func(t *testing.T) {
+		node, ok := manager.FindOne("test")
+		if !ok {
+			t.Fail()
+			return
+		}
 
-	slot, _ = ring.Get("4")
-	if slot.Hash() != nodeList[1].Hash() {
-		t.Fatal()
-	}
-}
+		if node.GetValue() != "test6" {
+			t.Fail()
+		}
+	})
 
-func TestUnsortAdd(t *testing.T) {
-	ring := New[node]()
-	ring.UnsortAdd(nodeList...)
-	ring.Sort()
+	t.Run("Should not find the node", func(t *testing.T) {
+		mgr := NewManager[string](10)
+		_, ok := mgr.FindOne("test")
+		if ok {
+			t.Fail()
+		}
+	})
 
-	ring.ForEach(func(index int, hash uint32, value node) {
-		node := sortNodes[index]
-		if node != value {
-			t.Fatal()
+	t.Run("Should find next nodes", func(t *testing.T) {
+		nodes := manager.FindNext("test1", 5)
+		t.Log(len(nodes))
+		if len(nodes) != 5 {
+			t.Fail()
+		}
+	})
+
+	t.Run("Should find prev nodes", func(t *testing.T) {
+		nodes := manager.FindPrev("test", 5)
+		if len(nodes) != 5 {
+			t.Fail()
+		}
+	})
+
+	t.Run("Should not find replica nodes", func(t *testing.T) {
+		node := manager.FindNext("test", 70)
+		if len(node) != 60 {
+			t.Fail()
 		}
 	})
 }
 
-func TestGetNext(t *testing.T) {
-	ring := New[node]()
-	for _, n := range nodeList {
-		ring.Add(n)
-	}
+func TestWeight(t *testing.T) {
+	t.Run("Should get replicas count", func(t *testing.T) {
+		count := manager.hashRing.Count()
+		if count != 6*10 {
+			t.Fail()
+		}
+	})
 
-	slot, ok := ring.Get("3")
+	t.Run("Should change replicas count", func(t *testing.T) {
+		node, ok := manager.GetNode("test3")
+		if !ok {
+			t.Fail()
+			return
+		}
+
+		manager.Remove(node.GetKey())
+		node.SetWeight(10)
+		manager.Add(node)
+
+		count := manager.hashRing.Count()
+		if count != 150 {
+			t.Fail()
+		}
+	})
+}
+
+func TestRemove(t *testing.T) {
+	total := manager.Slots()
+
+	_, ok := manager.GetNode("test2")
 	if !ok {
-		t.Fatal()
-	}
-	if slot.GetValue() != sortNodes[2] {
-		t.Fatal()
+		t.Fail()
+		return
 	}
 
-	slot = ring.GetNext(slot)
-	if slot.GetValue() != sortNodes[3] {
-		t.Fatal()
+	manager.Remove("test2")
+	_, ok = manager.GetNode("test2")
+	if ok {
+		t.Fail()
+		return
 	}
 
-	index := 3
-	for i := 0; i < ring.Count(); i++ {
-		index++
-		if index >= ring.Count() {
-			index = 0
-		}
-		slot = ring.GetNext(slot)
-		if slot.GetValue() != sortNodes[index] {
-			t.Fatal()
-		}
-	}
-}
-
-func TestGetPrev(t *testing.T) {
-	ring := New[node]()
-	for _, n := range nodeList {
-		ring.Add(n)
+	if manager.Count() != 5 {
+		t.Fail()
 	}
 
-	slot, ok := ring.Get("3")
-	if !ok {
-		t.Fatal()
-	}
-	if slot.GetValue() != sortNodes[2] {
-		t.Fatal()
-	}
-
-	slot = ring.GetPrev(slot)
-	if slot.GetValue() != sortNodes[1] {
-		t.Fatal()
-	}
-
-	index := 1
-	for i := 0; i < ring.Count(); i++ {
-		index--
-		if index < 0 {
-			index = ring.Count() - 1
-		}
-		slot = ring.GetPrev(slot)
-		if slot.GetValue() != sortNodes[index] {
-			t.Fatal()
-		}
-	}
-}
-
-func BenchmarkAdd(b *testing.B) {
-	var slots []Slot[node]
-	for j := 0; j < 1000000; j++ {
-		n := node{fmt.Sprint(j), j}
-		slots = append(slots, NewSlot(fmt.Sprint(j), n))
-	}
-
-	b.Run("add one", func(b *testing.B) {
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			ring := New[node]()
-			for _, s := range slots {
-				ring.UnsortAdd(s)
-			}
-			sort.Sort(ring)
-		}
-	})
-
-	b.Run("batch add", func(b *testing.B) {
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			ring := New[node]()
-			ring.Add(slots...)
-		}
-	})
-
-}
-
-func BenchmarkRemove(b *testing.B) {
-	ring := New[node]()
-	var slots []Slot[node]
-	for i := 0; i < 1000000; i++ {
-		n := node{fmt.Sprint(i), i}
-		slots = append(slots, NewSlot(fmt.Sprint(i), n))
-	}
-	ring.Add(slots...)
-
-	n := 500
-	b.Run("remove", func(b *testing.B) {
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			x := i * n
-			for j := 0; j < n; j++ {
-				ring.Remove(fmt.Sprint(j + x))
-			}
-		}
-	})
-}
-
-func BenchmarkGet(b *testing.B) {
-	ring := New[node]()
-	var slots []Slot[node]
-	for i := 0; i < 1000000; i++ {
-		n := node{fmt.Sprint(i), i}
-		slots = append(slots, NewSlot(fmt.Sprint(i), n))
-	}
-	ring.Add(slots...)
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		key, _ := rand.Int(rand.Reader, big.NewInt(1000000))
-		ring.Get(key.String())
+	if manager.Slots() != total-10 {
+		t.Fail()
 	}
 }

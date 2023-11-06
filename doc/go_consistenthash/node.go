@@ -1,9 +1,9 @@
 package go_consistenthash
 
+// 泛型一致性哈希实现
 import (
 	"strconv"
-    hashring "go_consistenthash/hashring"
-	
+	hashring "go_consistenthash/hashring"
 )
 
 type Node[T any] struct {

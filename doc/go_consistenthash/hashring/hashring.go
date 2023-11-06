@@ -1,5 +1,6 @@
 package go_consistenthash
 
+// 泛型一致性哈希实现
 import (
 	"hash/crc32"
 	"sort"
