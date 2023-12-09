@@ -13,6 +13,7 @@ func (heap *Heap) initHeap(n int){
 	heap.count = 0
 }
 
+// 大顶堆插入数据实现
 func (heap *Heap) insrt(data int) {
 	if heap.count >= heap.capacity {
 		fmt.Println("堆容量已满")

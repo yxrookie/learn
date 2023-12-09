@@ -19,4 +19,11 @@ func TestHeap(t *testing.T) {
 	aheap.printHeap()
 	aheap.insrt(5)
 	aheap.printHeap() 
+
+	aheap.removeMax()
+	aheap.printHeap()
+	aheap.removeMax()
+	aheap.printHeap()
+	aheap.removeMax()
+	aheap.printHeap()
 }
