@@ -11,7 +11,6 @@ func TestLruCache(t *testing.T) {
     newCache.put(1, "apple")
 	newCache.put(2, "huawei")
 	newCache.put(3, "xiaomi")
-	printCache(newCache)
 	fmt.Println(newCache.get(2))
 	fmt.Println(newCache.get(3))
 	newCache.put(4, "meizu")
